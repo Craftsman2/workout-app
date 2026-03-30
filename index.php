@@ -1,4 +1,3 @@
-<!-- gemini https://gemini.google.com/app/81d3b802295e6065 -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -54,10 +53,15 @@
             <div class="bg-white p-6 rounded-3xl space-y-6 shadow-sm border border-gray-100">
                 <input type="text" id="ex-name" class="w-full bg-gray-50 p-4 rounded-xl outline-none font-bold" placeholder="Название">
                 <textarea id="ex-desc" class="w-full bg-gray-50 p-4 rounded-xl outline-none text-sm min-h-[100px]" placeholder="Описание..."></textarea>
+                
                 <div>
-                    <label class="text-[10px] font-bold text-gray-400 mb-2 block uppercase">Файлы</label>
+                    <label class="text-[10px] font-bold text-gray-400 mb-2 block uppercase">Текущие изображения</label>
+                    <div id="ex-preview-list" class="flex flex-wrap gap-2 mb-4"></div>
+                    
+                    <label class="text-[10px] font-bold text-gray-400 mb-2 block uppercase">Добавить файлы</label>
                     <input type="file" id="ex-files" multiple accept="image/*" class="w-full text-xs">
                 </div>
+
                 <div class="flex gap-2">
                     <button data-unit="кг/повторы" class="unit-badge flex-1 py-3 rounded-xl bg-gray-100 text-[10px] font-bold uppercase">кг/повторы</button>
                     <button data-unit="раз" class="unit-badge flex-1 py-3 rounded-xl bg-gray-100 text-[10px] font-bold uppercase">Раз</button>
@@ -124,6 +128,7 @@
 <script>
     let state = { workouts: [], library: [] };
     let currentWId = null, currentExIdx = null, currentLibId = null, editingLibId = null, timerInterval = null;
+    let currentEditingImages = [];
 
     function getLocalDate() {
         const now = new Date();
@@ -198,10 +203,8 @@
         const archiveContainer = document.getElementById('archive-list');
         const sep = document.getElementById('archive-separator');
         
-        listContainer.innerHTML = ''; 
-        archiveContainer.innerHTML = '';
+        listContainer.innerHTML = ''; archiveContainer.innerHTML = '';
 
-        // Группировка тренировок по дате
         const grouped = state.workouts.reduce((acc, w) => {
             if (!acc[w.date]) acc[w.date] = [];
             acc[w.date].push(w);
@@ -219,7 +222,6 @@
 
             const dateGroup = document.createElement('div');
             dateGroup.className = "space-y-3";
-            
             const dateLabel = document.createElement('p');
             dateLabel.className = `text-[10px] font-black uppercase tracking-widest mb-2 ml-1 ${isToday ? 'text-black' : 'text-gray-400'}`;
             dateLabel.innerText = new Date(date).toLocaleDateString('ru-RU', {day:'numeric', month:'long'});
@@ -229,25 +231,13 @@
                 const card = document.createElement('div');
                 const done = w.exercises.filter(e => e.history?.length > 0).length;
                 const progress = w.exercises.length ? Math.round((done / w.exercises.length) * 100) : 0;
-                
                 card.className = `bg-white p-5 rounded-2xl shadow-sm flex items-center gap-4 border border-gray-100 active:scale-95 transition-all ${isToday ? 'today-card' : ''} ${isArchive ? 'archive-card' : ''}`;
                 card.onclick = () => router.navigate('workout', {id: w.id});
-                
-                card.innerHTML = `
-                    <div class="flex-1">
-                        <h3 class="font-bold text-gray-800">${w.title || 'Без названия'}</h3>
-                        <div class="w-full bg-gray-100 h-1 rounded-full mt-2">
-                            <div class="bg-black h-1 rounded-full" style="width:${progress}%"></div>
-                        </div>
-                    </div>
-                    <span class="text-[10px] font-bold text-gray-300 uppercase">${progress}%</span>
-                `;
+                card.innerHTML = `<div class="flex-1"><h3 class="font-bold text-gray-800">${w.title || 'Без названия'}</h3><div class="w-full bg-gray-100 h-1 rounded-full mt-2"><div class="bg-black h-1 rounded-full" style="width:${progress}%"></div></div></div><span class="text-[10px] font-bold text-gray-300 uppercase">${progress}%</span>`;
                 dateGroup.appendChild(card);
             });
-
             target.appendChild(dateGroup);
         });
-
         sep.classList.toggle('hidden', !hasArchive);
     }
 
@@ -265,7 +255,6 @@
             div.draggable = true;
             div.dataset.index = i;
             div.innerHTML = `<div class="w-12 h-12 bg-gray-50 rounded-xl overflow-hidden flex-shrink-0">${(lib.images && lib.images[0]) ? `<img src="${lib.images[0]}" class="w-full h-full object-cover">` : ''}</div><div class="flex-1" onclick="router.navigate('run', {wid: ${currentWId}, idx: ${i}})"><h4 class="font-bold text-sm text-gray-700 leading-tight">${lib.name}</h4><p class="text-[10px] font-bold text-blue-400 uppercase">${ex.history?.length||0} подходов</p></div><button onclick="removeEx(${i})" class="p-2 text-red-100 font-bold">✕</button>`;
-            
             div.addEventListener('dragstart', (e) => { e.currentTarget.classList.add('dragging'); e.dataTransfer.setData('text/plain', i); });
             div.addEventListener('dragend', (e) => e.currentTarget.classList.remove('dragging'));
             div.addEventListener('dragover', (e) => e.preventDefault());
@@ -281,6 +270,75 @@
             });
             list.appendChild(div);
         });
+    }
+
+    function renderEditLib() {
+        const previewList = document.getElementById('ex-preview-list');
+        if(editingLibId) {
+            const l = state.library.find(x => x.id === editingLibId);
+            document.getElementById('ex-name').value = l.name;
+            document.getElementById('ex-desc').value = l.description || '';
+            document.querySelectorAll('.unit-badge').forEach(b => b.classList.toggle('active', b.dataset.unit === l.unit));
+            currentEditingImages = [...(l.images || [])];
+        } else {
+            document.getElementById('ex-name').value = '';
+            document.getElementById('ex-desc').value = '';
+            document.querySelectorAll('.unit-badge').forEach(b => b.classList.toggle('active', b.dataset.unit === 'кг/повторы'));
+            currentEditingImages = [];
+        }
+        renderImagePreviews();
+    }
+
+    function renderImagePreviews() {
+        const previewList = document.getElementById('ex-preview-list');
+        previewList.innerHTML = '';
+        currentEditingImages.forEach((img, idx) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = "relative w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-200";
+            wrapper.innerHTML = `<img src="${img}" class="w-full h-full object-cover"><button onclick="removeImageFromLib(${idx})" class="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center text-[10px] rounded-bl-lg font-bold">✕</button>`;
+            previewList.appendChild(wrapper);
+        });
+    }
+
+    function removeImageFromLib(idx) {
+        currentEditingImages.splice(idx, 1);
+        renderImagePreviews();
+    }
+
+    async function saveLibraryItemWithUpload() {
+        const name = document.getElementById('ex-name').value;
+        const desc = document.getElementById('ex-desc').value;
+        const unit = document.querySelector('.unit-badge.active')?.dataset.unit || 'кг/повторы';
+        if (!name) return;
+
+        const btn = document.getElementById('btn-save-lib');
+        btn.disabled = true; btn.textContent = 'Сохранение...';
+
+        let newImages = [];
+        const fileInput = document.getElementById('ex-files');
+        if (fileInput.files.length > 0) {
+            const formData = new FormData();
+            formData.append('action', 'upload');
+            for (const file of fileInput.files) { formData.append('files[]', file); }
+            try {
+                const res = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await res.json();
+                if (result.paths) newImages = result.paths;
+            } catch (e) { console.error('Upload error:', e); }
+        }
+
+        const finalImages = currentEditingImages.concat(newImages);
+
+        if (editingLibId) {
+            const l = state.library.find(x => x.id === editingLibId);
+            l.name = name; l.description = desc; l.unit = unit; l.images = finalImages;
+        } else {
+            state.library.push({ id: Date.now(), name, description: desc, unit, images: finalImages });
+        }
+        await api('save', state);
+        btn.disabled = false; btn.textContent = 'Готово';
+        fileInput.value = '';
+        window.history.back();
     }
 
     function renderRun() {
@@ -309,18 +367,14 @@
             display.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
         };
         updateDisplay();
-        timerInterval = setInterval(() => {
-            timeLeft--;
-            if (timeLeft < 0) stopTimer(); else updateDisplay();
-        }, 1000);
+        timerInterval = setInterval(() => { timeLeft--; if (timeLeft < 0) stopTimer(); else updateDisplay(); }, 1000);
     }
 
     function stopTimer() { if (timerInterval) clearInterval(timerInterval); document.getElementById('rest-timer').classList.add('hidden'); }
 
     function addSet() {
         const v1 = document.getElementById('v1').value, v2 = document.getElementById('v2').value;
-        if (!v1 && !v2) return; // Не добавляем пустые значения
-
+        if (!v1 && !v2) return;
         const w = state.workouts.find(x => x.id === currentWId);
         const ex = w.exercises[currentExIdx];
         ex.history.push({ id: Date.now(), v1, v2 });
@@ -349,16 +403,7 @@
             const setsList = document.createElement('div');
             allDays[date].forEach((h, index) => {
                 const row = document.createElement('div'); row.className = "flex justify-between items-center text-sm py-1";
-                
-                let val = '';
-                if (unit === 'кг/повторы') {
-                    val = `<b>${h.v1 || 0}кг</b> × ${h.v2 || 0} раз`;
-                } else if (unit === 'км') {
-                    val = `<b>${h.v1 || 0}км</b>`;
-                } else {
-                    val = `<b>${h.v2 || 0} раз</b>`;
-                }
-
+                let val = unit === 'кг/повторы' ? `<b>${h.v1||0}кг</b> × ${h.v2||0} раз` : (unit === 'км' ? `<b>${h.v1||0}км</b>` : `<b>${h.v2||0} раз</b>`);
                 row.innerHTML = `<span class="text-gray-300 mr-4 font-mono text-[10px]">${index + 1}</span><span class="flex-1 text-gray-700">${val}</span><button onclick="deleteSetFromDatabase(${h.id}, ${libId}, '${unit}')" class="text-red-200 ml-2 p-1">✕</button>`;
                 setsList.appendChild(row);
             });
@@ -368,11 +413,7 @@
 
     function deleteSetFromDatabase(setId, libId, unit) {
         if(!confirm('Удалить этот подход?')) return;
-        state.workouts.forEach(w => {
-            w.exercises.forEach(ex => {
-                if(ex.libId === libId) { ex.history = ex.history.filter(h => h.id !== setId); }
-            });
-        });
+        state.workouts.forEach(w => { w.exercises.forEach(ex => { if(ex.libId === libId) { ex.history = ex.history.filter(h => h.id !== setId); } }); });
         autoSave(); renderGlobalHistory(libId, unit);
     }
 
@@ -381,14 +422,7 @@
         state.library.forEach(l => {
             const d = document.createElement('div');
             d.className = "p-3 bg-gray-50 rounded-xl flex items-center gap-3 active:bg-gray-100 mb-1";
-            d.innerHTML = `
-                <div class="w-10 h-10 bg-white rounded-lg overflow-hidden flex-shrink-0">${(l.images && l.images[0]) ? `<img src="${l.images[0]}" class="w-full h-full object-cover">` : ''}</div>
-                <div class="flex-1" onclick="addExToWorkout(${l.id})">
-                    <b class="text-sm text-gray-700">${l.name}</b>
-                </div>
-                <button onclick="router.navigate('edit-lib', {libId: ${l.id}})" class="text-blue-400 text-[10px] font-bold uppercase p-2">Ред.</button>
-                <button onclick="deleteFromLibraryById(${l.id})" class="text-red-300 text-[10px] font-bold uppercase p-2">Удал.</button>
-            `;
+            d.innerHTML = `<div class="w-10 h-10 bg-white rounded-lg overflow-hidden flex-shrink-0">${(l.images && l.images[0]) ? `<img src="${l.images[0]}" class="w-full h-full object-cover">` : ''}</div><div class="flex-1" onclick="addExToWorkout(${l.id})"><b class="text-sm text-gray-700">${l.name}</b></div><button onclick="router.navigate('edit-lib', {libId: ${l.id}})" class="text-blue-400 text-[10px] font-bold uppercase p-2">Ред.</button><button onclick="deleteFromLibraryById(${l.id})" class="text-red-300 text-[10px] font-bold uppercase p-2">Удал.</button>`;
             list.appendChild(d);
         });
     }
@@ -396,95 +430,16 @@
     function addExToWorkout(libId) {
         const w = state.workouts.find(x => x.id === currentWId);
         w.exercises.push({ libId, history: [] });
-        autoSave();
-        toggleOverlay(false);
-        renderWorkout();
+        autoSave(); toggleOverlay(false); renderWorkout();
     }
 
-    function deleteFromLibraryById(id) {
-        if(confirm('Удалить упражнение из базы навсегда?')) {
-            state.library = state.library.filter(x => x.id !== id);
-            api('save', state);
-            renderLib();
-        }
-    }
-
-    async function saveLibraryItemWithUpload() {
-        const name = document.getElementById('ex-name').value;
-        const desc = document.getElementById('ex-desc').value;
-        const unit = document.querySelector('.unit-badge.active')?.dataset.unit || 'кг/повторы';
-        if (!name) return;
-
-        const btn = document.getElementById('btn-save-lib');
-        btn.disabled = true;
-        btn.textContent = 'Сохранение...';
-
-        // Сначала загружаем новые файлы на сервер
-        let newImages = [];
-        const fileInput = document.getElementById('ex-files');
-        if (fileInput.files.length > 0) {
-            const formData = new FormData();
-            formData.append('action', 'upload');
-            for (const file of fileInput.files) {
-                formData.append('files[]', file);
-            }
-            try {
-                const res = await fetch('api.php', { method: 'POST', body: formData });
-                const result = await res.json();
-                if (result.paths) newImages = result.paths;
-            } catch (e) {
-                console.error('Upload error:', e);
-            }
-        }
-
-        // Объединяем старые изображения с новыми
-        let images = editingLibId ? (state.library.find(x => x.id === editingLibId)?.images || []) : [];
-        images = images.concat(newImages);
-
-        if (editingLibId) {
-            const l = state.library.find(x => x.id === editingLibId);
-            l.name = name; l.description = desc; l.unit = unit; l.images = images;
-        } else {
-            state.library.push({ id: Date.now(), name, description: desc, unit, images });
-        }
-        await api('save', state);
-
-        btn.disabled = false;
-        btn.textContent = 'Готово';
-        fileInput.value = '';
-        window.history.back();
-    }
-
-    function createNewWorkout() {
-        const id = Date.now();
-        state.workouts.push({ id, title: '', date: getLocalDate(), exercises: [] });
-        autoSave();
-        router.navigate('workout', {id});
-    }
-
-    function duplicateWorkout(id) {
-        const s = state.workouts.find(x => x.id === id);
-        const nId = Date.now();
-        state.workouts.push({ ...s, id: nId, date: getLocalDate(), exercises: s.exercises.map(ex => ({ ...ex, history: [] })) });
-        autoSave(); router.navigate('workout', {id: nId});
-    }
-
+    function deleteFromLibraryById(id) { if(confirm('Удалить упражнение из базы навсегда?')) { state.library = state.library.filter(x => x.id !== id); api('save', state); renderLib(); } }
+    function createNewWorkout() { const id = Date.now(); state.workouts.push({ id, title: '', date: getLocalDate(), exercises: [] }); autoSave(); router.navigate('workout', {id}); }
+    function duplicateWorkout(id) { const s = state.workouts.find(x => x.id === id); const nId = Date.now(); state.workouts.push({ ...s, id: nId, date: getLocalDate(), exercises: s.exercises.map(ex => ({ ...ex, history: [] })) }); autoSave(); router.navigate('workout', {id: nId}); }
     function deleteWorkout() { if(confirm('Удалить тренировку?')) { state.workouts = state.workouts.filter(x => x.id !== currentWId); autoSave(); window.history.back(); } }
     function removeEx(idx) { const w = state.workouts.find(x => x.id === currentWId); w.exercises.splice(idx,1); autoSave(); renderWorkout(); }
     function toggleOverlay(s) { document.getElementById('overlay').classList.toggle('hidden', !s); if(s) renderLib(); }
     function openExerciseSelector() { toggleOverlay(true); }
-    function renderEditLib() {
-        if(editingLibId) {
-            const l = state.library.find(x => x.id === editingLibId);
-            document.getElementById('ex-name').value = l.name;
-            document.getElementById('ex-desc').value = l.description || '';
-            document.querySelectorAll('.unit-badge').forEach(b => b.classList.toggle('active', b.dataset.unit === l.unit));
-        } else {
-            document.getElementById('ex-name').value = '';
-            document.getElementById('ex-desc').value = '';
-            document.querySelectorAll('.unit-badge').forEach(b => b.classList.toggle('active', b.dataset.unit === 'кг/повторы'));
-        }
-    }
 
     let sliderImages = []; let sliderIdx = 0;
     function openSlider(libId) { const lib = state.library.find(l => l.id === libId); if(!lib?.images?.length) return; sliderImages = lib.images; sliderIdx = 0; updateSlider(); document.getElementById('lightbox').classList.add('active'); }
