@@ -413,8 +413,34 @@
         const name = document.getElementById('ex-name').value;
         const desc = document.getElementById('ex-desc').value;
         const unit = document.querySelector('.unit-badge.active')?.dataset.unit || 'кг/повторы';
-        if(!name) return;
-        let images = editingLibId ? (state.library.find(x => x.id === editingLibId).images || []) : [];
+        if (!name) return;
+
+        const btn = document.getElementById('btn-save-lib');
+        btn.disabled = true;
+        btn.textContent = 'Сохранение...';
+
+        // Сначала загружаем новые файлы на сервер
+        let newImages = [];
+        const fileInput = document.getElementById('ex-files');
+        if (fileInput.files.length > 0) {
+            const formData = new FormData();
+            formData.append('action', 'upload');
+            for (const file of fileInput.files) {
+                formData.append('files[]', file);
+            }
+            try {
+                const res = await fetch('api.php', { method: 'POST', body: formData });
+                const result = await res.json();
+                if (result.paths) newImages = result.paths;
+            } catch (e) {
+                console.error('Upload error:', e);
+            }
+        }
+
+        // Объединяем старые изображения с новыми
+        let images = editingLibId ? (state.library.find(x => x.id === editingLibId)?.images || []) : [];
+        images = images.concat(newImages);
+
         if (editingLibId) {
             const l = state.library.find(x => x.id === editingLibId);
             l.name = name; l.description = desc; l.unit = unit; l.images = images;
@@ -422,6 +448,10 @@
             state.library.push({ id: Date.now(), name, description: desc, unit, images });
         }
         await api('save', state);
+
+        btn.disabled = false;
+        btn.textContent = 'Готово';
+        fileInput.value = '';
         window.history.back();
     }
 
