@@ -387,6 +387,7 @@
         document.getElementById('run-ex-name').innerText = lib.name;
         document.getElementById('run-ex-desc').innerText = lib.description || '';
         document.getElementById('input-group-1').classList.toggle('hidden', lib.unit === 'раз');
+        document.getElementById('v1').placeholder = lib.unit === 'км' ? 'Км' : 'Кг';
         document.getElementById('input-group-2').classList.toggle('hidden', lib.unit === 'км');
         const mainImg = document.getElementById('run-main-img');
         mainImg.innerHTML = (lib.images && lib.images[0]) ? `<img src="${imgUrl(lib.images[0])}" class="w-full h-full object-cover">` : '';
